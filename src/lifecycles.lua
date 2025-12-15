@@ -61,6 +61,11 @@ function lifecycles.infoChanged(driver, device, event, args)
     log.info("IP address changed, refreshing status")
     kef_api.refresh_status(device)
   end
+  
+  if args.old_st_store.preferences.standbyTime ~= device.preferences.standbyTime then
+    log.info("Standby time preference changed to: " .. device.preferences.standbyTime)
+    kef_api.set_standby_time(device, device.preferences.standbyTime)
+  end
 end
 
 return lifecycles

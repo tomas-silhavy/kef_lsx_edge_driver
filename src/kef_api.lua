@@ -277,6 +277,46 @@ function kef_api.get_source(device)
   return nil
 end
 
+-- Set standby time on speaker - queued
+function kef_api.set_standby_time(device, standby_pref)
+  queue_command(device, function()
+    -- First get current source and power state
+    local st_source, _, _, is_on = kef_api.get_source(device)
+    
+    if not st_source then
+      log.error("Failed to get current source for standby time change")
+      return
+    end
+    
+    -- Convert preference to standby value
+    local standby_time
+    if standby_pref == "never" then
+      standby_time = nil
+    elseif standby_pref == "60" then
+      standby_time = 60
+    else
+      standby_time = 20
+    end
+    
+    -- Set source with new standby time (preserve is_on state)
+    local source_code = encode_source(st_source, standby_time, "L/R", is_on)
+    if not source_code then
+      log.error("Failed to encode standby time change")
+      return
+    end
+    
+    local command = CMD_SET .. CODE_SOURCE .. CMD_MID_SET .. string.char(source_code)
+    local response = send_command(device, command)
+    
+    if response and string.find(response, RESPONSE_OK, 1, true) then
+      log.info(string.format("Standby time set to: %s", standby_pref))
+      device:set_field("last_standby_time", standby_time, {persist = true})
+    else
+      log.error("Failed to set standby time on speaker")
+    end
+  end)
+end
+
 -- Set source (preserves standby setting) - queued
 function kef_api.set_source(device, st_source_name)
   queue_command(device, function()
@@ -460,13 +500,29 @@ function kef_api.refresh_status(device)
       -- Save standby time from speaker (this is the source of truth)
       device:set_field("last_standby_time", standby_time, {persist = true})
       
-      -- Log the actual standby time from speaker
+      -- Log the actual standby time from speaker and compare to preference
+      local standby_desc
       if standby_time == nil then
-        log.info("Speaker standby: Never (set preference to 'Never' to match)")
+        standby_desc = "Never"
       elseif standby_time == 60 then
-        log.info("Speaker standby: 60 minutes (set preference to '60 minutes' to match)")
+        standby_desc = "60 minutes"
       else
-        log.info("Speaker standby: 20 minutes (preference matches)")
+        standby_desc = "20 minutes"
+      end
+      
+      local pref_desc
+      if device.preferences.standbyTime == "never" then
+        pref_desc = "Never"
+      elseif device.preferences.standbyTime == "60" then
+        pref_desc = "60 minutes"
+      else
+        pref_desc = "20 minutes"
+      end
+      
+      if standby_desc ~= pref_desc then
+        log.warn(string.format("Standby mismatch - Speaker: %s, Preference: %s", standby_desc, pref_desc))
+      else
+        log.info(string.format("Standby time: %s (in sync)", standby_desc))
       end
       
       if is_on then
