@@ -2,6 +2,27 @@
 
 All notable changes to the KEF LSX SmartThings Edge Driver will be documented in this file.
 
+## [2025-12-15] - Standby Time Preference & Sync
+
+### Added
+- **Standby Time Preference**: New device setting to view and control speaker standby behavior
+  - Options: 20 minutes, 60 minutes, Never
+  - Automatically updated from speaker on refresh
+  - Used when setting source or powering on
+
+### Fixed
+- **Standby time synchronization**: Driver now reads standby time from speaker during refresh
+  - Pull-to-refresh updates standby time preference from speaker
+  - Changes made in KEF Connect app are now respected
+  - Preference shows current speaker setting (read-only display)
+  - Source switching and power on preserve the actual speaker standby setting
+
+### Technical Details
+- `refresh_status()` queries standby time and updates both field and preference
+- `set_source()` uses preference → saved field → default (20 min) hierarchy
+- `power_on()` uses current → saved → preference → default hierarchy
+- Preference auto-updates to reflect speaker's actual setting
+
 ## [2025-12-15] - Standby Time Preservation
 
 ### Fixed

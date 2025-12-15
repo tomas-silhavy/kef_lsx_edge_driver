@@ -280,9 +280,19 @@ end
 -- Set source (preserves standby setting) - queued
 function kef_api.set_source(device, st_source_name)
   queue_command(device, function()
-    -- Use saved standby time or default to 20 minutes
-    -- Don't query current standby to avoid connection race condition
-    local standby_time = device:get_field("last_standby_time") or 20
+    -- Use saved standby time from field, or preference, or default to 20 minutes
+    local standby_time = device:get_field("last_standby_time")
+    
+    if not standby_time then
+      local standby_pref = device.preferences.standbyTime
+      if standby_pref == "never" then
+        standby_time = nil
+      elseif standby_pref == "60" then
+        standby_time = 60
+      else
+        standby_time = 20  -- default
+      end
+    end
     
     -- Turn on with preserved standby setting
     local source_code = encode_source(st_source_name, standby_time, "L/R", true)
@@ -319,10 +329,21 @@ function kef_api.power_on(device)
     -- Use current source or fallback to saved/wifi
     local target_source = st_source or device:get_field("last_source") or "wifi"
     
-    -- Preserve standby time or default to 20 minutes
+    -- Preserve standby time: use current, saved, preference, or default to 20
     local target_standby = current_standby
     if not target_standby then
-      target_standby = device:get_field("last_standby_time") or 20
+      target_standby = device:get_field("last_standby_time")
+      
+      if not target_standby then
+        local standby_pref = device.preferences.standbyTime
+        if standby_pref == "never" then
+          target_standby = nil
+        elseif standby_pref == "60" then
+          target_standby = 60
+        else
+          target_standby = 20  -- default
+        end
+      end
     end
     
     -- Turn on with current source and standby (is_on=true)
@@ -423,10 +444,29 @@ function kef_api.refresh_status(device)
   
   -- Wait 1 second before next query
   device.thread:call_with_delay(1, function()
-    -- Get source and power state
-    local st_source, _, _, is_on = kef_api.get_source(device)
+    -- Get source, standby time, and power state
+    local st_source, standby_time, _, is_on = kef_api.get_source(device)
     if st_source then
       device:emit_event(capabilities.mediaInputSource.inputSource(st_source))
+      
+      -- Save standby time to both field and preference
+      if standby_time then
+        device:set_field("last_standby_time", standby_time, {persist = true})
+        
+        -- Update preference to show current setting
+        local standby_pref = tostring(standby_time)
+        if device.preferences.standbyTime ~= standby_pref then
+          device:try_update_metadata({preferences = {standbyTime = standby_pref}})
+          log.info(string.format("Standby time updated to %s minutes", standby_pref))
+        end
+      else
+        -- nil means "never"
+        device:set_field("last_standby_time", nil, {persist = true})
+        if device.preferences.standbyTime ~= "never" then
+          device:try_update_metadata({preferences = {standbyTime = "never"}})
+          log.info("Standby time updated to Never")
+        end
+      end
       
       if is_on then
         device:emit_event(capabilities.switch.switch.on())
