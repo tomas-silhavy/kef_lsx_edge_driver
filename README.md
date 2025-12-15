@@ -70,10 +70,24 @@ Configure a DHCP reservation in your router to prevent the IP from changing.
 - Directly set via slider in SmartThings app
 
 ### Source Selection
-Select from available input sources via SmartThings app. The driver automatically configures "never standby" mode when switching sources.
+Select from available input sources via SmartThings app.
+
+### Standby Time Control
+Configure automatic standby timeout in device settings:
+- **20 minutes** (default)
+- **60 minutes**  
+- **Never**
+
+**How it works:**
+- Changes made in SmartThings are sent to speaker immediately
+- Changes made in KEF Connect app are detected on next refresh
+- Pull-to-refresh or wait 30 seconds to sync
+- Check driver logs to see if speaker and preference are in sync
 
 ### Status Refresh
-Tap refresh to query current volume and source from the speaker.
+- **Automatic**: Updates every 30 seconds
+- **Manual**: Pull down to refresh in SmartThings app
+- Updates volume, source, on/off state, and standby time
 
 ## Troubleshooting
 
