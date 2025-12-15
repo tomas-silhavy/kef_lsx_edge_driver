@@ -439,7 +439,11 @@ function kef_api.refresh_status(device)
   local volume = kef_api.get_volume(device)
   if volume then
     device:emit_event(capabilities.audioVolume.volume(volume))
+    device:online()  -- Mark device as online
     log.debug("Volume updated")
+  else
+    log.warn("Failed to get volume - device may be offline")
+    return  -- Don't continue if speaker is not responding
   end
   
   -- Wait 1 second before next query
@@ -449,23 +453,12 @@ function kef_api.refresh_status(device)
     if st_source then
       device:emit_event(capabilities.mediaInputSource.inputSource(st_source))
       
-      -- Save standby time to both field and preference
+      -- Save standby time to field (preference is read-only display)
+      device:set_field("last_standby_time", standby_time, {persist = true})
       if standby_time then
-        device:set_field("last_standby_time", standby_time, {persist = true})
-        
-        -- Update preference to show current setting
-        local standby_pref = tostring(standby_time)
-        if device.preferences.standbyTime ~= standby_pref then
-          device:try_update_metadata({preferences = {standbyTime = standby_pref}})
-          log.info(string.format("Standby time updated to %s minutes", standby_pref))
-        end
+        log.debug(string.format("Standby time from speaker: %s min", tostring(standby_time)))
       else
-        -- nil means "never"
-        device:set_field("last_standby_time", nil, {persist = true})
-        if device.preferences.standbyTime ~= "never" then
-          device:try_update_metadata({preferences = {standbyTime = "never"}})
-          log.info("Standby time updated to Never")
-        end
+        log.debug("Standby time from speaker: Never")
       end
       
       if is_on then

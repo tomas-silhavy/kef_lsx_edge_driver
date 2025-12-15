@@ -25,7 +25,7 @@ preferences:
       default: ""
   - name: "standbyTime"
     title: "Standby Time"
-    description: "Automatic standby after inactivity (read from speaker on refresh)"
+    description: "Automatic standby after inactivity (set to match your KEF Connect app setting)"
     required: false
     preferenceType: enumeration
     definition:
