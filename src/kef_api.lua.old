@@ -1,0 +1,152 @@
+local log = require "log"
+local cosock = require "cosock"
+local http = cosock.asyncify "socket.http"
+local ltn12 = require "ltn12"
+local json = require "dkjson"
+local capabilities = require "st.capabilities"
+
+local kef_api = {}
+
+local function get_device_ip(device)
+  local ip = device.preferences.ipAddress
+  if not ip or ip == "" then
+    ip = device:get_field("ip_address") or device.device_network_id
+  end
+  return ip
+end
+
+local function get_device_port(device)
+  return device.preferences.port or 80
+end
+
+local function get_base_url(device)
+  local ip = get_device_ip(device)
+  if not ip or ip == "" then
+    log.warn("IP address not configured for device")
+    return nil
+  end
+  
+  local port = get_device_port(device)
+  if port == 80 then
+    return string.format("http://%s", ip)
+  else
+    return string.format("http://%s:%d", ip, port)
+  end
+end
+
+function kef_api.get_data(device, path, roles)
+  local base_url = get_base_url(device)
+  if not base_url then
+    log.error("Cannot get data - IP address not configured")
+    return nil
+  end
+  
+  local url = string.format("%s/api/getData?path=%s&roles=%s", base_url, path, roles)
+  
+  local response_body = {}
+  local res, code, headers, status = http.request{
+    url = url,
+    method = "GET",
+    sink = ltn12.sink.table(response_body)
+  }
+  
+  if code == 200 then
+    local body = table.concat(response_body)
+    local data, pos, err = json.decode(body)
+    if err then
+      log.error("Failed to parse JSON response: " .. err)
+      return nil
+    end
+    return data
+  else
+    log.error("HTTP request failed: " .. tostring(code))
+    return nil
+  end
+end
+
+function kef_api.set_data(device, path, roles, value)
+  local base_url = get_base_url(device)
+  if not base_url then
+    log.error("Cannot set data - IP address not configured")
+    return false
+  end
+  
+  local url = string.format("%s/api/setData?path=%s&roles=%s&value=%s", 
+    base_url, path, roles, value)
+  
+  local response_body = {}
+  local res, code, headers, status = http.request{
+    url = url,
+    method = "GET",
+    sink = ltn12.sink.table(response_body)
+  }
+  
+  if code == 200 then
+    return true
+  else
+    log.error("HTTP request failed: " .. tostring(code))
+    return false
+  end
+end
+
+function kef_api.get_status(device)
+  local data = kef_api.get_data(device, "settings:/kef/host/speakerStatus", "value")
+  if data and data[1] then
+    return data[1].kefSpeakerStatus
+  end
+  return nil
+end
+
+function kef_api.get_source(device)
+  local data = kef_api.get_data(device, "settings:/kef/play/physicalSource", "value")
+  if data and data[1] then
+    return data[1].kefPhysicalSource
+  end
+  return nil
+end
+
+function kef_api.get_volume(device)
+  local data = kef_api.get_data(device, "player:volume", "value")
+  if data and data[1] then
+    return data[1].i32_
+  end
+  return nil
+end
+
+function kef_api.power_on(device)
+  local value = '{"type":"kefPhysicalSource","kefPhysicalSource":"powerOn"}'
+  return kef_api.set_data(device, "settings:/kef/play/physicalSource", "value", value)
+end
+
+function kef_api.set_source(device, source)
+  local value = string.format('{"type":"kefPhysicalSource","kefPhysicalSource":"%s"}', source)
+  return kef_api.set_data(device, "settings:/kef/play/physicalSource", "value", value)
+end
+
+function kef_api.set_volume(device, volume)
+  local value = string.format('{"type":"i32_","i32_":%d}', volume)
+  return kef_api.set_data(device, "player:volume", "value", value)
+end
+
+function kef_api.refresh_status(device)
+  local status = kef_api.get_status(device)
+  if status then
+    if status == "standby" then
+      device:emit_event(capabilities.switch.switch.off())
+    else
+      device:emit_event(capabilities.switch.switch.on())
+    end
+  end
+  
+  local volume = kef_api.get_volume(device)
+  if volume then
+    device:emit_event(capabilities.audioVolume.volume(volume))
+  end
+  
+  local source = kef_api.get_source(device)
+  if source and source ~= "standby" then
+    device:emit_event(capabilities.mediaInputSource.inputSource(source))
+  end
+end
+
+return kef_api

@@ -1,0 +1,5 @@
+name: 'KEF LSX Speaker'
+packageKey: 'kef-lsx-speaker-v2'
+permissions:
+  lan: {}
+  discovery: {}

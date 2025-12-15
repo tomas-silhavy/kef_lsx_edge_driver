@@ -1,0 +1,25 @@
+name: kef-speaker
+components:
+- id: main
+  capabilities:
+  - id: switch
+    version: 1
+  - id: audioVolume
+    version: 1
+  - id: mediaInputSource
+    version: 1
+  - id: mediaPlayback
+    version: 1
+  - id: refresh
+    version: 1
+  categories:
+  - name: Speaker
+preferences:
+  - name: "ipAddress"
+    title: "Speaker IP Address"
+    description: "IP address of the KEF LSX speaker (e.g., 192.168.1.100)"
+    required: true
+    preferenceType: string
+    definition:
+      stringType: text
+      default: ""
