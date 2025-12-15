@@ -280,11 +280,9 @@ end
 -- Set source (preserves standby setting) - queued
 function kef_api.set_source(device, st_source_name)
   queue_command(device, function()
-    -- Get current standby setting to preserve it
-    local _, current_standby, _, _ = kef_api.get_source(device)
-    
-    -- Use current standby or default to 20 minutes
-    local standby_time = current_standby or 20
+    -- Use saved standby time or default to 20 minutes
+    -- Don't query current standby to avoid connection race condition
+    local standby_time = device:get_field("last_standby_time") or 20
     
     -- Turn on with preserved standby setting
     local source_code = encode_source(st_source_name, standby_time, "L/R", true)
