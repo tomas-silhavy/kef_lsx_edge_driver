@@ -348,11 +348,6 @@ function kef_api.power_on(device)
   
   return true
 end
-    end
-  end)
-  
-  return true
-end
 
 -- Power off (set source with is_on=false flag, adds 128 to source code)
 function kef_api.power_off(device)
