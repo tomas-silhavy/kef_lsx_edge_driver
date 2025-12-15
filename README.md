@@ -48,12 +48,16 @@ The driver will automatically connect and refresh the speaker status.
 
 ## Finding Your Speaker's IP Address
 
-### Method 1: Router Admin Page
+### Method 1:
+1. Open 'Kef Connect' app
+2. Klick on the 3 dots in upper right corner
+3. Open 'Speaker Info' -> 'IP address'
+
+### Method 2: Router Admin Page
 1. Log into your router
 2. Check DHCP client list
 3. Look for device named "KEF LSX"
-
-### Method 2: Network Scanner
+or
 Use apps like Fing or nmap to scan your network for devices on port 50001.
 
 ### Recommended: Set Static IP
