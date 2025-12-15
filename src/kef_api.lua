@@ -280,10 +280,11 @@ end
 -- Set source (preserves standby setting) - queued
 function kef_api.set_source(device, st_source_name)
   queue_command(device, function()
-    -- Use saved standby time from field, or preference, or default to 20 minutes
+    -- ALWAYS use standby from speaker (updated on refresh), fallback to preference
     local standby_time = device:get_field("last_standby_time")
     
-    if not standby_time then
+    if standby_time == nil and not device:get_field("last_standby_time_set") then
+      -- First time: use preference as initial value
       local standby_pref = device.preferences.standbyTime
       if standby_pref == "never" then
         standby_time = nil
@@ -292,6 +293,9 @@ function kef_api.set_source(device, st_source_name)
       else
         standby_time = 20  -- default
       end
+      log.debug("Using preference for initial standby time")
+    else
+      log.debug(string.format("Using speaker's standby time: %s", tostring(standby_time)))
     end
     
     -- Turn on with preserved standby setting
@@ -453,12 +457,16 @@ function kef_api.refresh_status(device)
     if st_source then
       device:emit_event(capabilities.mediaInputSource.inputSource(st_source))
       
-      -- Save standby time to field (preference is read-only display)
+      -- Save standby time from speaker (this is the source of truth)
       device:set_field("last_standby_time", standby_time, {persist = true})
-      if standby_time then
-        log.debug(string.format("Standby time from speaker: %s min", tostring(standby_time)))
+      
+      -- Log the actual standby time from speaker
+      if standby_time == nil then
+        log.info("Speaker standby: Never (set preference to 'Never' to match)")
+      elseif standby_time == 60 then
+        log.info("Speaker standby: 60 minutes (set preference to '60 minutes' to match)")
       else
-        log.debug("Standby time from speaker: Never")
+        log.info("Speaker standby: 20 minutes (preference matches)")
       end
       
       if is_on then

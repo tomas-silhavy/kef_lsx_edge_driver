@@ -24,8 +24,8 @@ preferences:
       stringType: text
       default: ""
   - name: "standbyTime"
-    title: "Standby Time"
-    description: "Automatic standby after inactivity (set to match your KEF Connect app setting)"
+    title: "Standby Time Setting"
+    description: "Set to match KEF Connect app. Driver reads actual value from speaker and logs mismatches."
     required: false
     preferenceType: enumeration
     definition:
