@@ -277,11 +277,17 @@ function kef_api.get_source(device)
   return nil
 end
 
--- Set source (matches Python library behavior) - queued
+-- Set source (preserves standby setting) - queued
 function kef_api.set_source(device, st_source_name)
   queue_command(device, function()
-    -- Use never standby and turn on
-    local source_code = encode_source(st_source_name, nil, "L/R", true)
+    -- Get current standby setting to preserve it
+    local _, current_standby, _, _ = kef_api.get_source(device)
+    
+    -- Use current standby or default to 20 minutes
+    local standby_time = current_standby or 20
+    
+    -- Turn on with preserved standby setting
+    local source_code = encode_source(st_source_name, standby_time, "L/R", true)
     if not source_code then
       return
     end
@@ -291,7 +297,7 @@ function kef_api.set_source(device, st_source_name)
     
     -- Check if response contains success bytes
     if response and string.find(response, RESPONSE_OK, 1, true) then
-      log.info(string.format("Source set to %s", st_source_name))
+      log.info(string.format("Source set to %s (standby: %s min)", st_source_name, tostring(standby_time)))
       device:emit_event(capabilities.mediaInputSource.inputSource(st_source_name))
       device:emit_event(capabilities.switch.switch.on())
     else
@@ -304,7 +310,7 @@ end
 function kef_api.power_on(device)
   queue_command(device, function()
     -- Get current source (even if off)
-    local st_source, _, _, is_on = kef_api.get_source(device)
+    local st_source, current_standby, _, is_on = kef_api.get_source(device)
     
     if is_on then
       log.info("Speaker already on")
@@ -313,10 +319,16 @@ function kef_api.power_on(device)
     end
     
     -- Use current source or fallback to saved/wifi
-    st_source = st_source or device:get_field("last_source") or "wifi"
+    local target_source = st_source or device:get_field("last_source") or "wifi"
     
-    -- Turn on with current source (is_on=true)
-    local source_code = encode_source(st_source, nil, "L/R", true)
+    -- Preserve standby time or default to 20 minutes
+    local target_standby = current_standby
+    if not target_standby then
+      target_standby = device:get_field("last_standby_time") or 20
+    end
+    
+    -- Turn on with current source and standby (is_on=true)
+    local source_code = encode_source(target_source, target_standby, "L/R", true)
     if not source_code then
       log.error("Failed to encode power on command")
       return
@@ -326,11 +338,16 @@ function kef_api.power_on(device)
     local response = send_command(device, command)
     
     if response and string.find(response, RESPONSE_OK, 1, true) then
-      log.info(string.format("Power on successful (source: %s)", st_source))
+      log.info(string.format("Power on successful (source: %s, standby: %s min)", target_source, tostring(target_standby)))
       device:emit_event(capabilities.switch.switch.on())
-      device:emit_event(capabilities.mediaInputSource.inputSource(st_source))
+      device:emit_event(capabilities.mediaInputSource.inputSource(target_source))
     else
       log.error("Failed to power on")
+    end
+  end)
+  
+  return true
+end
     end
   end)
   
@@ -341,17 +358,23 @@ end
 function kef_api.power_off(device)
   -- Get current source (with delay handled by callback)
   device.thread:call_with_delay(0, function()
-    local st_source, _, _, is_on = kef_api.get_source(device)
+    local st_source, current_standby, _, is_on = kef_api.get_source(device)
     if st_source and is_on then
       device:set_field("last_source", st_source, {persist = true})
+      device:set_field("last_standby_time", current_standby, {persist = true})
     end
     
     -- Wait 1 second before sending power off command
     device.thread:call_with_delay(1, function()
-      st_source = st_source or device:get_field("last_source") or "wifi"
+      local target_source = st_source or device:get_field("last_source") or "wifi"
+      local target_standby = current_standby
+      
+      if not st_source then
+        target_standby = device:get_field("last_standby_time")
+      end
       
       -- Encode with is_on=false (adds 128 to code)
-      local source_code = encode_source(st_source, nil, "L/R", false)
+      local source_code = encode_source(target_source, target_standby, "L/R", false)
       if not source_code then
         log.error("Failed to encode power off command")
         return
