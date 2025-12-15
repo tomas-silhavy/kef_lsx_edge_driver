@@ -6,10 +6,13 @@ KEF LSX protocol taken from https://github.com/basnijholt/aiokef
 
 ## Features
 
-- **Power Control**: Turn speaker on/off (volume-based simulation)
+- **Power Control**: Turn speaker on/off via source on/off bit
 - **Volume Control**: Set, increase, and decrease volume (0-100)
-- **Source Switching**: Switch between audio inputs
-- **Status Monitoring**: Query current speaker status
+- **Source Switching**: Switch between audio inputs (wifi, bluetooth, aux, optical)
+- **Playback Control**: Play/pause/stop (toggle based)
+- **Standby Time**: Configure auto-standby timeout (20min, 60min, Never)
+- **Status Monitoring**: Automatic polling every 30 seconds + manual refresh
+- **Routine Support**: Execute multiple commands sequentially with proper timing
 
 ## Supported Sources
 
@@ -59,10 +62,11 @@ Configure a DHCP reservation in your router to prevent the IP from changing.
 ## Usage
 
 ### Power Control
-- **On**: Sets source to last used input (or wifi by default)
-- **Off**: Sets volume to 0, speaker auto-enters standby
+- **On**: Restores last used source with saved on/off bit
+- **Off**: Sets source on/off bit to false (speaker enters standby)
+- **Preserves**: Source selection and standby time across power cycles
 
-**Note**: KEF LSX v1 has no dedicated power off command. The driver simulates power control via volume.
+**Note**: KEF LSX v1 has no dedicated power command. Power is controlled via the source setting's on/off bit (byte value +128 when off).
 
 ### Volume Control
 - Range: 0-100
@@ -84,6 +88,14 @@ Configure automatic standby timeout in device settings:
 - Pull-to-refresh or wait 30 seconds to sync
 - Check driver logs to see if speaker and preference are in sync
 
+### Playback Control
+- **Play/Pause**: Toggle playback state
+- **Stop**: Stop playback
+- State shows: playing, paused, or stopped
+- Works best with wifi/bluetooth sources
+
+**Note**: KEF LSX v1 provides limited playback state info. Controls are toggle-based.
+
 ### Status Refresh
 - **Automatic**: Updates every 30 seconds
 - **Manual**: Pull down to refresh in SmartThings app
@@ -104,7 +116,13 @@ Configure automatic standby timeout in device settings:
 **Commands not working:**
 - Check driver logs: `smartthings edge:drivers:logcat`
 - Verify port 50001 is accessible
+- Ensure no other app is connected to speaker simultaneously
+- Wait 1-2 seconds between commands if testing manually
 - Restart the speaker and retry
+
+**Routines executing only first command:**
+- This was a known issue, now fixed with command queue system
+- All commands in a routine execute sequentially with proper delays
 
 ## Directory Structure
 

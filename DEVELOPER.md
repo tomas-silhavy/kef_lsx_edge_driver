@@ -108,13 +108,15 @@ Add these values to base codes to modify standby behavior:
 - `+64` = R/L orientation swap
 
 Examples:
-- Wifi, 20min, L/R: `2`
-- Wifi, 60min, L/R: `18` (2 + 16)
-- Wifi, never, L/R: `34` (2 + 32)
-- Optical, 20min, R/L: `75` (11 + 64)
-- Bluetooth, never, L/R: `41` (9 + 32)
+- Wifi, 20min, L/R, ON: `2`
+- Wifi, 60min, L/R, ON: `18` (2 + 16)
+- Wifi, never, L/R, ON: `34` (2 + 32)
+- Optical, 20min, R/L, ON: `75` (11 + 64)
+- Bluetooth, never, L/R, ON: `41` (9 + 32)
+- Wifi, 20min, L/R, OFF: `130` (2 + 128)
+- Optical, 60min, L/R, OFF: `155` (11 + 16 + 128)
 
-The driver uses "never standby" mode by default when switching sources (adds 32 to base code).
+The driver uses the user's standby preference setting when sending commands.
 
 ## Implementation Details
 
@@ -148,11 +150,18 @@ kef_api.refresh_status(device)
 **Connection Management:**
 
 The driver uses a command queue system to prevent concurrent TCP connections:
-- One queue per device
-- Commands are processed sequentially
+- One queue per device (stored per device ID)
+- Commands are processed sequentially with 1-second delays
 - Each command opens a fresh TCP connection
 - Connections are closed after response
 - 5-second timeout per command
+- Automatic cleanup on command failure
+
+**Queue Benefits:**
+- Prevents "Connection refused" errors
+- Eliminates race conditions
+- Ensures reliable command execution in routines
+- Allows multiple rapid commands (e.g., on + volume + source)
 
 ### command_handlers.lua
 
@@ -160,32 +169,52 @@ Maps SmartThings capabilities to KEF API calls.
 
 **Capability Handlers:**
 
-- `capability_switch.on` → Power on (volume-based simulation)
-- `capability_switch.off` → Power off (volume to 0)
+- `capability_switch.on` → Power on with last source/standby
+- `capability_switch.off` → Power off (preserves source/standby)
 - `capability_audio_volume.setVolume` → Set volume
 - `capability_audio_volume.volumeUp` → Increase volume by 5
 - `capability_audio_volume.volumeDown` → Decrease volume by 5
 - `capability_media_input_source.setInputSource` → Switch source
+- `capability_media_playback.play/pause/stop` → Playback control
 - `capability_refresh.refresh` → Query current status
 
 ### Power Control Simulation
 
-The KEF LSX v1 has **no dedicated power on/off command**. The driver simulates power states:
+The KEF LSX v1 has **no dedicated power on/off command**. Power is controlled via the source setting's on/off bit:
 
 **Power Off:**
 ```lua
--- Set volume to 0, speaker auto-enters standby
-kef_api.set_volume(device, 0)
+-- Set source with is_on=false (adds 128 to source code)
+kef_api.power_off(device)
+-- Preserves current source and standby setting
 device:emit_event(capabilities.switch.switch.off())
 ```
 
 **Power On:**
 ```lua
--- Restore last source (or default to wifi)
-local last_source = device:get_field("last_source") or "wifi"
-kef_api.set_source(device, last_source)
+-- Set source with is_on=true (uses last known source)
+kef_api.power_on(device)
+-- Restores last source and standby setting
 device:emit_event(capabilities.switch.switch.on())
 ```
+
+### Standby Time Control
+
+The driver now supports full standby time management:
+
+**Source Byte Encoding:**
+- Base source code (2=wifi, 9=bluetooth, 10=aux, 11=optical)
+- `+0` = 20 minute standby
+- `+16` = 60 minute standby  
+- `+32` = Never standby
+- `+64` = R/L orientation swap
+- `+128` = Power off bit (is_on=false)
+
+**User Control:**
+- Standby time preference in device settings (20min/60min/Never)
+- Changes sent to speaker immediately via `set_standby_time()`
+- Refresh reads current speaker setting and logs if preference doesn't match
+- All commands use preference value to maintain consistency
 
 ### Discovery Process
 
@@ -235,6 +264,7 @@ capabilities:
   - switch                    # Power on/off
   - audioVolume              # Volume control
   - mediaInputSource         # Source switching
+  - mediaPlayback            # Play/pause/stop
   - refresh                  # Status refresh
 ```
 
@@ -246,16 +276,26 @@ preferences:
     title: Speaker IP Address
     type: string
     required: true
+  - name: standbyTime
+    title: Standby Time
+    type: enumeration
+    options: [20, 60, never]
+    default: 20
 ```
 
-The driver previously had a port preference but it was removed since KEF LSX v1 always uses port 50001.
+**How Preferences Work:**
+- `ipAddress`: User configures speaker IP, driver connects on save
+- `standbyTime`: User sets desired timeout, sent to speaker on change
+- Changes detected via `infoChanged` lifecycle event
+- Preference is authoritative - all commands use this value
 
 ## Known Limitations
 
-1. **No true power state** - KEF LSX v1 doesn't report power on/off, only current source and volume
-2. **Limited sources** - Only 4 sources available (wifi, bluetooth, aux, optical)
-3. **Playback controls** - Only work with streaming sources (wifi/bluetooth)
-4. **No status notifications** - Speaker doesn't push updates, must poll via refresh
+1. **No true power state query** - KEF LSX v1 doesn't have a power status command, only source on/off bit
+2. **Limited sources** - Only 4 sources available (wifi, bluetooth, aux, optical) - USB not supported
+3. **Playback controls** - Toggle only (no detailed playback state from speaker)
+4. **No status notifications** - Speaker doesn't push updates, polling via refresh every 30 seconds
+5. **Connection limit** - Only one TCP connection at a time, enforced by queue system
 
 ## Driver Deployment
 
