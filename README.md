@@ -2,6 +2,8 @@
 
 A SmartThings Edge driver for controlling **KEF LSX (first generation)** speakers via local network communication.
 
+KEF LSX protocol taken from https://github.com/basnijholt/aiokef
+
 ## Features
 
 - **Power Control**: Turn speaker on/off (volume-based simulation)

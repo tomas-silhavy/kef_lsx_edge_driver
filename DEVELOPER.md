@@ -325,5 +325,5 @@ The driver includes comprehensive error handling:
 ## References
 
 - SmartThings Edge Driver Documentation: https://developer.smartthings.com/
-- KEF LSX v1 Protocol: Reverse engineered from pykefcontrol
+- KEF LSX v1 Protocol: Reverse engineered from https://github.com/basnijholt/aiokef
 - LuaSocket (cosock): SmartThings Edge compatible socket library
