@@ -316,25 +316,22 @@ end
 -- Set source (preserves standby setting) - queued
 function kef_api.set_source(device, st_source_name)
   queue_command(device, function()
-    -- ALWAYS use standby from speaker (updated on refresh), fallback to preference
-    local standby_time = device:get_field("last_standby_time")
+    -- Use preference as source of truth for standby (user can manually set it)
+    -- Fallback to cached value if preference not set yet
+    local standby_pref = device.preferences.standbyTime
+    local standby_time
     
-    if standby_time == nil and not device:get_field("last_standby_time_set") then
-      -- First time: use preference as initial value
-      local standby_pref = device.preferences.standbyTime
-      if standby_pref == "never" then
-        standby_time = nil
-      elseif standby_pref == "60" then
-        standby_time = 60
-      else
-        standby_time = 20  -- default
-      end
-      log.debug("Using preference for initial standby time")
+    if standby_pref == "never" then
+      standby_time = nil
+    elseif standby_pref == "60" then
+      standby_time = 60
     else
-      log.debug(string.format("Using speaker's standby time: %s", tostring(standby_time)))
+      standby_time = 20  -- default or "20"
     end
     
-    -- Turn on with preserved standby setting
+    log.debug(string.format("Using standby from preference: %s", tostring(standby_time)))
+    
+    -- Turn on with specified standby setting
     local source_code = encode_source(st_source_name, standby_time, "L/R", true)
     if not source_code then
       return
@@ -348,6 +345,7 @@ function kef_api.set_source(device, st_source_name)
       log.info(string.format("Source set to %s (standby: %s min)", st_source_name, tostring(standby_time)))
       device:emit_event(capabilities.mediaInputSource.inputSource(st_source_name))
       device:emit_event(capabilities.switch.switch.on())
+      device:set_field("last_standby_time", standby_time, {persist = true})
     else
       log.error("Failed to set source")
     end
@@ -396,43 +394,42 @@ end
 
 -- Power off (set source with is_on=false flag, adds 128 to source code)
 function kef_api.power_off(device)
-  -- Get current source (with delay handled by callback)
-  device.thread:call_with_delay(0, function()
-    local st_source, current_standby, _, is_on = kef_api.get_source(device)
-    if st_source and is_on then
-      device:set_field("last_source", st_source, {persist = true})
-      device:set_field("last_standby_time", current_standby, {persist = true})
+  queue_command(device, function()
+    -- Use cached values from last refresh
+    local target_source = device:get_field("last_source") or "wifi"
+    local target_standby = device:get_field("last_standby_time")
+    
+    if not target_standby then
+      local standby_pref = device.preferences.standbyTime
+      if standby_pref == "never" then
+        target_standby = nil
+      elseif standby_pref == "60" then
+        target_standby = 60
+      else
+        target_standby = 20
+      end
     end
     
-    -- Wait 1 second before sending power off command
-    device.thread:call_with_delay(1, function()
-      local target_source = st_source or device:get_field("last_source") or "wifi"
-      local target_standby = current_standby
-      
-      if not st_source then
-        target_standby = device:get_field("last_standby_time")
-      end
-      
-      -- Encode with is_on=false (adds 128 to code)
-      local source_code = encode_source(target_source, target_standby, "L/R", false)
-      if not source_code then
-        log.error("Failed to encode power off command")
-        return
-      end
-      
-      local command = CMD_SET .. CODE_SOURCE .. CMD_MID_SET .. string.char(source_code)
-      local response = send_command(device, command)
-      
-      if response and string.find(response, RESPONSE_OK, 1, true) then
-        log.info("Power off successful")
-        device:emit_event(capabilities.switch.switch.off())
-      else
-        log.error("Failed to power off")
-      end
-    end)
+    -- Encode with is_on=false (adds 128 to code)
+    local source_code = encode_source(target_source, target_standby, "L/R", false)
+    if not source_code then
+      log.error("Failed to encode power off command")
+      return
+    end
+    
+    local command = CMD_SET .. CODE_SOURCE .. CMD_MID_SET .. string.char(source_code)
+    local response = send_command(device, command)
+    
+    if response and string.find(response, RESPONSE_OK, 1, true) then
+      log.info("Power off successful")
+      device:emit_event(capabilities.switch.switch.off())
+      device:set_field("last_is_on", false, {persist = true})
+    else
+      log.error("Failed to power off")
+    end
   end)
   
-  return true  -- Return immediately, actual work happens async
+  return true
 end
 
 -- Check if speaker is "on"
